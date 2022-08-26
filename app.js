@@ -7,12 +7,22 @@ const Photo = require('./models/Photo');
 const app = express();
 const fs = require('fs');
 const fileUpload = require('express-fileupload');
+const connectDB = require('./db/connection');
+// Tarayıcıya 'put' request gönderemediğimiz için 'post' request gibi davranmasını sağlayacağız. 
+//  Bu yüzden de 'method-override' paketini indirdik (npm i method-override) 
+const methodOverride = require('method-override');
+require('dotenv').config();
 
 
-mongoose.connect('mongodb://localhost/pcat-test-db', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-});
+const port = 3000;
+connectDB(process.env.MONGO_URl).then(result => {
+    app.listen(port, () => {
+        console.log(`Server is running on ${port}`);
+    })
+}).catch(error => {
+    console.log(error);
+})
+
 // Template Engine
 //ejs, bizim klasör yapısındaki 'views' klasörünün içine bakar.
 app.set("view engine", "ejs"); // ejs'nin kullanacağımız 'Template Engine' olduğunu belirtiyoruz.
@@ -39,8 +49,14 @@ app.use(express.static("public")); // Bu kodu yazarak 'static' dosyamızı 'publ
 app.use(fileUpload());
 app.use(express.urlencoded({
     extended: true
-})); // json ve urlencoded'ı 'undefined' hatası vermemesi için kullanıyoruz.
+})); // json ve urlencoded'ı 'undefined' hatası vermemesi için kullanıyoruz. 
+// Kullanılmadığı takdirde 'req.body' , 'undefined' döner.
 app.use(express.json());
+app.use(methodOverride('_method', {
+    methods: ['POST', 'PUT']
+}));
+
+// req.body -> Formlarda girdiğimiz değerleri , post ettiğimiz değerleri döndürür.
 
 // ROUTES
 app.get('/', async (req, res) => {
@@ -65,9 +81,6 @@ app.get('/add', (req, res) => {
     res.render('add');
 })
 
-app.get('*', (req, res) => {
-    res.send("404 ERROR");
-})
 
 app.post('/photos', async (req, res) => { // form'un içinde 'action'a verdiğim isim ile aynı işmi kullandık : "/photos"
     // console.log(req.files.image); -> Yükledigimiz resmin bilgilerine 'req.files.image' şeklinde ulaşabiliyoruz.
@@ -89,8 +102,38 @@ app.post('/photos', async (req, res) => { // form'un içinde 'action'a verdiğim
     })
 })
 
+app.get('/photos/edit/:id', async (req, res) => {
+    // const photoID = req.params; 
+    const photo = await Photo.findOne({
+        _id: req.params.id
+    });
+    res.render('edit', {
+        photo
+    })
+})
 
-const port = 3000;
-app.listen(port, () => {
-    console.log(`Sunucu ${port} icerisinde calismaya basladi...`);
+app.put('/photos/:id', async (req, res) => {
+    const photo = await Photo.findOne({
+        _id: req.params.id
+    });
+    // const {title,description} = req.body;
+    photo.title = req.body.title;
+    photo.description = req.body.description;
+    photo.save()
+
+    res.redirect(`/photos/${req.params.id}`);
+
+})
+app.delete('/photos/:id', async (req, res) => {
+    const photo = await Photo.findOne({
+        _id: req.params.id
+    });
+    let deletedImage = __dirname + '/public' + photo.image; // photo.image veritabanından gelir : /uploads/code_unsplash.jpg (example)
+    fs.unlinkSync(deletedImage);
+    await Photo.findByIdAndRemove(req.params.id);
+    res.redirect('/');
+})
+
+app.get('*', (req, res) => {
+    res.send("404 ERROR");
 })
